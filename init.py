@@ -14,6 +14,8 @@ def create():
         connection.execute(artists_table)
         connection.execute(tracks_table)
 
+    engine.dispose()
+
 
 if __name__ == "__main__":
     create()
