@@ -1,16 +1,25 @@
+import os
+
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
-from sqlalchemy import text
-from sqlalchemy.engine import Engine
 
-from db.db_conn import get_pool_engine
+from db.artist import Artist
+from db.dal import DataAccessLayer
+from db.track import Track
 
 
 def spotify_import():
+    dal = DataAccessLayer()
+    session = dal.create_session(os.environ.get('DB_USER'), os.environ.get('DB_PASS'))
     spotify = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
     artists = get_artists(spotify)
-    update_artist_records(spotify, artists)
-    update_tracks(spotify, artists)
+    for artist in create_artist_records(spotify, artists):
+        session.add(artist)
+    for track in create_tracks(spotify, artists):
+        session.add(track)
+
+    session.commit()
+    session.close()
 
 
 def get_artists(spotify):
@@ -26,53 +35,42 @@ def get_artists(spotify):
     return artists
 
 
-def update_artist_records(spotify, artists):
-    engine: Engine = get_pool_engine()
-    with engine.connect() as connection:
-        for artist in artists:
-            artist_data = spotify.artist(artist['id'])
-            statement = text("INSERT INTO artists (id, name, genres, image, popularity) "
-                             "VALUES (:id, :name, :genres, :image, :popularity)"
-                             "ON CONFLICT (id) DO UPDATE SET popularity = EXCLUDED.popularity")
-            connection.execute(statement,
-                               {"id": artist_data['id'],
-                                "name": artist_data['name'],
-                                "genres": artist_data['genres'][0] if len(artist_data['genres']) else 'N/A',
-                                "image": artist_data['images'][0]['url']if len(artist_data['images']) else None,
-                                "popularity": artist_data['popularity']})
-    engine.dispose()
+def create_artist_records(spotify, artists):
+    artist_records = []
+    for artist in artists:
+        artist_data = spotify.artist(artist['id'])
+        artist_records.append(Artist(
+            artist_data['id'],
+            artist_data['name'],
+            artist_data['genres'][0] if len(artist_data['genres']) else 'N/A',
+            artist_data['images'][0]['url'] if len(artist_data['images']) else None,
+            artist_data['popularity']
+        ))
+    return artist_records
 
 
-def update_tracks(spotify, artists):
-    engine: Engine = get_pool_engine()
-    with engine.connect() as connection:
-        for artist in artists:
-            tracks = spotify.artist_top_tracks(artist['id'])
-            tracks_meta = spotify.audio_features(tracks)
-            for idx, track in enumerate(tracks):
-                track_meta = tracks_meta[idx]
-                if track_meta is None:
-                    continue
-                statement = text(
-                    "INSERT INTO tracks(id, artist_id, name, duration, acoustic, danceability, energy, instrumental, live, loudness, tempo, time_signature)"
-                    "VALUES (:id, :artist_id, :name, :duration, :acoustic, :danceability, :energy, :instrumental, :live, :loudness, :tempo, :time_signature)"
-                    "ON CONFLICT(id) DO NOTHING")
-                print("track, track meta", track, track_meta)
-                connection.execute(statement,
-                                   {"id": track['id'],
-                                    "name": track['name'],
-                                    "artist_id": artist['id'],
-                                    "duration": track_meta['duration'],
-                                    "acoustic": track_meta['acoustic'],
-                                    "danceability": track_meta['danceability'],
-                                    "energy": track_meta['energy'],
-                                    "instrumental": track_meta['instrumental'],
-                                    "live": track_meta['live'],
-                                    "loudness": track_meta['loudness'],
-                                    "tempo": track_meta['tempo'],
-                                    "time_signature": track_meta['time_signature']})
-    connection.close()
+def create_tracks(spotify, artists):
+    track_records = []
+    for artist in artists:
+        tracks = spotify.artist_top_tracks(artist['id'])
+        tracks_meta = spotify.audio_features(tracks)
+        for idx, track in enumerate(tracks):
+            track_meta = tracks_meta[idx]
+            if track_meta is None:
+                continue
+            record = Track(track['id'], track['name'], artist['id'])
+            record.duration = track_meta['duration'],
+            record.acoustic = track_meta['acoustic'],
+            record.danceability = track_meta['danceability'],
+            record.energy = track_meta['energy'],
+            record.instrumental = track_meta['instrumental'],
+            record.live = track_meta['live'],
+            record.loudness = track_meta['loudness'],
+            record.tempo = track_meta['tempo'],
+            record.time_signature = track_meta['time_signature']
+            track_records.append(record)
 
+    return track_records
 
 
 if __name__ == "__main__":
