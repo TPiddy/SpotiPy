@@ -37,8 +37,8 @@ def update_artist_records(spotify, artists):
             connection.execute(statement,
                                {"id": artist_data['id'],
                                 "name": artist_data['name'],
-                                "genres": artist_data['genres'][0],
-                                "image": artist_data['images'][0].url,
+                                "genres": artist_data['genres'][0] if len(artist_data['genres']) else 'N/A',
+                                "image": artist_data['images'][0]['url']if len(artist_data['images']) else None,
                                 "popularity": artist_data['popularity']})
     engine.dispose()
 
@@ -51,10 +51,13 @@ def update_tracks(spotify, artists):
             tracks_meta = spotify.audio_features(tracks)
             for idx, track in enumerate(tracks):
                 track_meta = tracks_meta[idx]
+                if track_meta is None:
+                    continue
                 statement = text(
                     "INSERT INTO tracks(id, artist_id, name, duration, acoustic, danceability, energy, instrumental, live, loudness, tempo, time_signature)"
                     "VALUES (:id, :artist_id, :name, :duration, :acoustic, :danceability, :energy, :instrumental, :live, :loudness, :tempo, :time_signature)"
                     "ON CONFLICT(id) DO NOTHING")
+                print("track, track meta", track, track_meta)
                 connection.execute(statement,
                                    {"id": track['id'],
                                     "name": track['name'],
