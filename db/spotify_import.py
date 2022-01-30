@@ -3,10 +3,10 @@ from spotipy.oauth2 import SpotifyClientCredentials
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from db_conn import get_pool_engine
+from db.db_conn import get_pool_engine
 
 
-def main():
+def spotify_import():
     spotify = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
     artists = get_artists(spotify)
     update_artist_records(spotify, artists)
@@ -74,5 +74,6 @@ def update_tracks(spotify, artists):
     connection.close()
 
 
+
 if __name__ == "__main__":
-    main()
+    spotify_import()
